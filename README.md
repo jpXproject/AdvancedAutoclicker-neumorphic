@@ -23,5 +23,7 @@ Designed to feel professional, clean, and user-friendly while keeping the classi
 
 ## Quick Load (most popular executors)
 
-```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/autoclicker.lua"))()
+```
+loadstring(game:HttpGet("https://raw.githubusercontent.com/jpXproject/AdvancedAutoclicker-neumorphic/refs/heads/main/jpXCAutoClickerV1.lua"))()
+```
+
