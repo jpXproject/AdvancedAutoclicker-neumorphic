@@ -1,0 +1,1214 @@
+-- ╔══════════════════════════════════════════════════════════════╗
+-- ║          jpXcode AUTO CLICKER v3.0 - VELOCITY EDITION        ║
+-- ║          Neumorphic UI | Roblox | Professional Tools         ║
+-- ╚══════════════════════════════════════════════════════════════╝
+
+local Players       = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService    = game:GetService("RunService")
+local TweenService  = game:GetService("TweenService")
+local HttpService   = game:GetService("HttpService")
+local LocalPlayer   = Players.LocalPlayer
+
+-- ══════════════════════════════════════════════
+--  GLOBAL STATE
+-- ══════════════════════════════════════════════
+local State = {
+    -- Click Settings
+    clickActive     = false,
+    clickInterval   = 0.02,   -- seconds
+    clickButton     = "Left", -- Left / Right / Middle
+    clickType       = "Single",-- Single / Double / Triple
+    repeatMode      = "Infinite", -- Infinite / Count
+    repeatCount     = 10,
+    clicksDone      = 0,
+
+    -- Position
+    posMode         = "Dynamic", -- Dynamic / Fixed
+    fixedX          = 0,
+    fixedY          = 0,
+
+    -- Hotkeys
+    toggleKey       = Enum.KeyCode.F6,
+    recordKey       = Enum.KeyCode.F7,
+
+    -- Record & Play
+    recording       = false,
+    playing         = false,
+    recordedClicks  = {},
+    playIndex       = 1,
+
+    -- Anti-AFK
+    antiAfkActive   = false,
+
+    -- Speed Boost
+    speedBoostActive = false,
+    speedBoostVal    = 1,
+
+    -- Stats
+    totalClicks     = 0,
+    sessionStart    = os.time(),
+
+    -- UI
+    windowOpen      = true,
+    currentTab      = "CLICKER",
+    dragging        = false,
+    dragStart       = nil,
+    startPos        = nil,
+}
+
+-- ══════════════════════════════════════════════
+--  HELPERS / TWEEN
+-- ══════════════════════════════════════════════
+local function Tween(obj, props, t, style, dir)
+    style = style or Enum.EasingStyle.Quad
+    dir   = dir   or Enum.EasingDirection.Out
+    TweenService:Create(obj, TweenInfo.new(t or 0.18, style, dir), props):Play()
+end
+
+local function RGBToColor(r,g,b,a)
+    return Color3.fromRGB(r,g,b)
+end
+
+-- ══════════════════════════════════════════════
+--  COLOR PALETTE  (Neumorphic Dark Teal)
+-- ══════════════════════════════════════════════
+local C = {
+    Base       = RGBToColor(22, 28, 36),
+    Surface    = RGBToColor(26, 34, 44),
+    Raised     = RGBToColor(30, 40, 52),
+    Pressed    = RGBToColor(18, 24, 32),
+    Accent     = RGBToColor(0,  200, 150),
+    AccentDim  = RGBToColor(0,  140, 105),
+    AccentGlow = RGBToColor(0,  255, 190),
+    Danger     = RGBToColor(255, 80,  80),
+    Warn       = RGBToColor(255, 180, 30),
+    TextPri    = RGBToColor(210, 240, 230),
+    TextSec    = RGBToColor(120, 160, 145),
+    TextDim    = RGBToColor(70,  100, 88),
+    Shadow     = RGBToColor(10,  14,  20),
+    Highlight  = RGBToColor(45,  60,  75),
+    TabActive  = RGBToColor(0,   200, 150),
+    TabInact   = RGBToColor(30,  42,  54),
+    Green      = RGBToColor(50,  220, 120),
+    Red        = RGBToColor(255, 70,  70),
+}
+
+-- ══════════════════════════════════════════════
+--  UI CONSTRUCTION
+-- ══════════════════════════════════════════════
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name          = "jpXcodeAutoClicker"
+ScreenGui.ResetOnSpawn  = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.DisplayOrder  = 999
+
+if syn then
+    syn.protect_gui(ScreenGui)
+elseif gethui then
+    ScreenGui.Parent = gethui()
+else
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end
+if not ScreenGui.Parent then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+-- ─── Main Window ───────────────────────────────
+local Main = Instance.new("Frame")
+Main.Name           = "Main"
+Main.Size           = UDim2.new(0, 420, 0, 560)
+Main.Position       = UDim2.new(0.5, -210, 0.5, -280)
+Main.BackgroundColor3 = C.Surface
+Main.BorderSizePixel = 0
+Main.ClipsDescendants = true
+Main.Parent         = ScreenGui
+
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 16)
+
+-- Outer shadow (faked with a slightly larger darker frame behind)
+local Shadow = Instance.new("Frame")
+Shadow.Name  = "Shadow"
+Shadow.Size  = UDim2.new(1, 12, 1, 12)
+Shadow.Position = UDim2.new(0, -6, 0, 6)
+Shadow.BackgroundColor3 = C.Shadow
+Shadow.BorderSizePixel = 0
+Shadow.ZIndex = Main.ZIndex - 1
+Shadow.Parent = Main
+Instance.new("UICorner", Shadow).CornerRadius = UDim.new(0, 20)
+
+-- Inner highlight (top-left edge glow)
+local Highlight = Instance.new("Frame")
+Highlight.Name  = "Highlight"
+Highlight.Size  = UDim2.new(1, -2, 1, -2)
+Highlight.Position = UDim2.new(0, 1, 0, 1)
+Highlight.BackgroundTransparency = 1
+Highlight.BorderSizePixel = 1
+Highlight.BorderColor3 = C.Highlight
+Highlight.ZIndex = Main.ZIndex + 1
+Highlight.Parent = Main
+Instance.new("UICorner", Highlight).CornerRadius = UDim.new(0, 15)
+
+-- Accent top border
+local TopBorder = Instance.new("Frame")
+TopBorder.Size  = UDim2.new(1, 0, 0, 3)
+TopBorder.Position = UDim2.new(0,0,0,0)
+TopBorder.BackgroundColor3 = C.Accent
+TopBorder.BorderSizePixel = 0
+TopBorder.ZIndex = Main.ZIndex + 2
+TopBorder.Parent = Main
+Instance.new("UICorner", TopBorder).CornerRadius = UDim.new(0, 3)
+
+-- ─── Title Bar ─────────────────────────────────
+local TitleBar = Instance.new("Frame")
+TitleBar.Name = "TitleBar"
+TitleBar.Size = UDim2.new(1, 0, 0, 52)
+TitleBar.BackgroundColor3 = C.Base
+TitleBar.BorderSizePixel = 0
+TitleBar.ZIndex = Main.ZIndex + 2
+TitleBar.Parent = Main
+
+local TitleIcon = Instance.new("TextLabel")
+TitleIcon.Size = UDim2.new(0, 36, 0, 36)
+TitleIcon.Position = UDim2.new(0, 12, 0.5, -18)
+TitleIcon.BackgroundColor3 = C.Accent
+TitleIcon.BorderSizePixel = 0
+TitleIcon.Text = "⚡"
+TitleIcon.TextColor3 = C.Base
+TitleIcon.TextSize = 18
+TitleIcon.Font = Enum.Font.GothamBold
+TitleIcon.ZIndex = Main.ZIndex + 3
+TitleIcon.Parent = TitleBar
+Instance.new("UICorner", TitleIcon).CornerRadius = UDim.new(0, 10)
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Size = UDim2.new(0, 200, 1, 0)
+TitleLabel.Position = UDim2.new(0, 56, 0, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "jpXcode AUTO CLICKER"
+TitleLabel.TextColor3 = C.TextPri
+TitleLabel.TextSize = 14
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.ZIndex = Main.ZIndex + 3
+TitleLabel.Parent = TitleBar
+
+local SubLabel = Instance.new("TextLabel")
+SubLabel.Size = UDim2.new(0, 200, 0, 14)
+SubLabel.Position = UDim2.new(0, 57, 0, 30)
+SubLabel.BackgroundTransparency = 1
+SubLabel.Text = "VELOCITY EDITION  •  v3.0"
+SubLabel.TextColor3 = C.AccentDim
+SubLabel.TextSize = 10
+SubLabel.Font = Enum.Font.Gotham
+SubLabel.TextXAlignment = Enum.TextXAlignment.Left
+SubLabel.ZIndex = Main.ZIndex + 3
+SubLabel.Parent = TitleBar
+
+-- Status dot
+local StatusDot = Instance.new("Frame")
+StatusDot.Size = UDim2.new(0, 10, 0, 10)
+StatusDot.Position = UDim2.new(1, -80, 0.5, -5)
+StatusDot.BackgroundColor3 = C.Red
+StatusDot.BorderSizePixel = 0
+StatusDot.ZIndex = Main.ZIndex + 3
+StatusDot.Parent = TitleBar
+Instance.new("UICorner", StatusDot).CornerRadius = UDim.new(1, 0)
+
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(0, 55, 0, 16)
+StatusLabel.Position = UDim2.new(1, -65, 0.5, -8)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Text = "INACTIVE"
+StatusLabel.TextColor3 = C.Red
+StatusLabel.TextSize = 10
+StatusLabel.Font = Enum.Font.GothamBold
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatusLabel.ZIndex = Main.ZIndex + 3
+StatusLabel.Parent = TitleBar
+
+-- Minimize / Close buttons
+local function MakeWinBtn(color, symbol, xOff)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0, 18, 0, 18)
+    b.Position = UDim2.new(1, xOff, 0.5, -9)
+    b.BackgroundColor3 = color
+    b.BorderSizePixel = 0
+    b.Text = symbol
+    b.TextColor3 = C.Base
+    b.TextSize = 10
+    b.Font = Enum.Font.GothamBold
+    b.ZIndex = Main.ZIndex + 4
+    b.Parent = TitleBar
+    Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
+    return b
+end
+
+local CloseBtn = MakeWinBtn(C.Danger, "✕", -26)
+local MinBtn   = MakeWinBtn(C.Warn,   "─", -50)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    Tween(Main, {Size = UDim2.new(0,420,0,0), Position = UDim2.new(0.5,-210,0.5,0)}, 0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+    task.wait(0.35)
+    ScreenGui:Destroy()
+end)
+
+MinBtn.MouseButton1Click:Connect(function()
+    State.windowOpen = not State.windowOpen
+    if State.windowOpen then
+        Tween(Main, {Size = UDim2.new(0,420,0,560)}, 0.3, Enum.EasingStyle.Back)
+    else
+        Tween(Main, {Size = UDim2.new(0,420,0,52)}, 0.25)
+    end
+end)
+
+-- Drag
+TitleBar.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+        State.dragging = true
+        State.dragStart = inp.Position
+        State.startPos  = Main.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(inp)
+    if State.dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = inp.Position - State.dragStart
+        Main.Position = UDim2.new(
+            State.startPos.X.Scale, State.startPos.X.Offset + delta.X,
+            State.startPos.Y.Scale, State.startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+UserInputService.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+        State.dragging = false
+    end
+end)
+
+-- ─── Tab Bar ───────────────────────────────────
+local TabBar = Instance.new("Frame")
+TabBar.Name = "TabBar"
+TabBar.Size = UDim2.new(1, 0, 0, 40)
+TabBar.Position = UDim2.new(0, 0, 0, 52)
+TabBar.BackgroundColor3 = C.Base
+TabBar.BorderSizePixel = 0
+TabBar.ZIndex = Main.ZIndex + 2
+TabBar.Parent = Main
+
+local TabLayout = Instance.new("UIListLayout")
+TabLayout.FillDirection = Enum.FillDirection.Horizontal
+TabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+TabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+TabLayout.Padding = UDim.new(0, 4)
+TabLayout.Parent = TabBar
+
+local TABS = {"CLICKER","POSITION","HOTKEY","RECORD","EXTRAS"}
+local TabButtons = {}
+
+local function SelectTab(name)
+    State.currentTab = name
+    for _, t in pairs(TabButtons) do
+        local active = t.Name == name
+        Tween(t, {
+            BackgroundColor3 = active and C.Accent or C.TabInact,
+            TextColor3 = active and C.Base or C.TextSec
+        }, 0.18)
+    end
+    -- show/hide pages
+    for _, child in ipairs(Main:GetChildren()) do
+        if child:IsA("ScrollingFrame") or (child:IsA("Frame") and child.Name:sub(1,4) == "Page") then
+            child.Visible = child.Name == "Page"..name
+        end
+    end
+end
+
+for _, name in ipairs(TABS) do
+    local btn = Instance.new("TextButton")
+    btn.Name = name
+    btn.Size = UDim2.new(0, 70, 0, 30)
+    btn.BackgroundColor3 = C.TabInact
+    btn.BorderSizePixel = 0
+    btn.Text = name
+    btn.TextColor3 = C.TextSec
+    btn.TextSize = 10
+    btn.Font = Enum.Font.GothamBold
+    btn.ZIndex = Main.ZIndex + 3
+    btn.Parent = TabBar
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+    table.insert(TabButtons, btn)
+    btn.MouseButton1Click:Connect(function() SelectTab(name) end)
+end
+
+-- ─── Helper: create a page frame ──────────────
+local function MakePage(name)
+    local f = Instance.new("Frame")
+    f.Name = "Page"..name
+    f.Size = UDim2.new(1, 0, 1, -92)
+    f.Position = UDim2.new(0, 0, 0, 92)
+    f.BackgroundTransparency = 1
+    f.Visible = false
+    f.ZIndex = Main.ZIndex + 2
+    f.Parent = Main
+    return f
+end
+
+-- ─── Helper: neumorphic card ───────────────────
+local function NCard(parent, x, y, w, h, label)
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(0, w, 0, h)
+    card.Position = UDim2.new(0, x, 0, y)
+    card.BackgroundColor3 = C.Raised
+    card.BorderSizePixel = 0
+    card.ZIndex = parent.ZIndex + 1
+    card.Parent = parent
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 12)
+
+    if label and label ~= "" then
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(1, -16, 0, 18)
+        lbl.Position = UDim2.new(0, 12, 0, 8)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = label
+        lbl.TextColor3 = C.AccentDim
+        lbl.TextSize = 10
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.ZIndex = card.ZIndex + 1
+        lbl.Parent = card
+    end
+    return card
+end
+
+-- ─── Helper: neumorphic text input ─────────────
+local function NInput(parent, x, y, w, h, def, numOnly)
+    local bg = Instance.new("Frame")
+    bg.Size = UDim2.new(0, w, 0, h)
+    bg.Position = UDim2.new(0, x, 0, y)
+    bg.BackgroundColor3 = C.Pressed
+    bg.BorderSizePixel = 0
+    bg.ZIndex = parent.ZIndex + 1
+    bg.Parent = parent
+    Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 8)
+
+    local inp = Instance.new("TextBox")
+    inp.Size = UDim2.new(1, -10, 1, 0)
+    inp.Position = UDim2.new(0, 5, 0, 0)
+    inp.BackgroundTransparency = 1
+    inp.Text = tostring(def or "0")
+    inp.TextColor3 = C.AccentGlow
+    inp.TextSize = 13
+    inp.Font = Enum.Font.GothamBold
+    inp.TextXAlignment = Enum.TextXAlignment.Center
+    inp.ClearTextOnFocus = false
+    inp.ZIndex = bg.ZIndex + 1
+    inp.Parent = bg
+
+    if numOnly then
+        inp.FocusLost:Connect(function()
+            local n = tonumber(inp.Text)
+            if not n then inp.Text = tostring(def or "0") end
+        end)
+    end
+    return inp
+end
+
+-- ─── Helper: neumorphic toggle button ──────────
+local function NToggle(parent, x, y, w, h, textOff, textOn, callback)
+    local active = false
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, w, 0, h)
+    btn.Position = UDim2.new(0, x, 0, y)
+    btn.BackgroundColor3 = C.Raised
+    btn.BorderSizePixel = 0
+    btn.Text = textOff
+    btn.TextColor3 = C.TextSec
+    btn.TextSize = 11
+    btn.Font = Enum.Font.GothamBold
+    btn.ZIndex = parent.ZIndex + 1
+    btn.Parent = parent
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
+
+    btn.MouseButton1Click:Connect(function()
+        active = not active
+        if active then
+            Tween(btn, {BackgroundColor3 = C.Accent, TextColor3 = C.Base}, 0.18)
+            btn.Text = textOn
+        else
+            Tween(btn, {BackgroundColor3 = C.Raised, TextColor3 = C.TextSec}, 0.18)
+            btn.Text = textOff
+        end
+        if callback then callback(active) end
+    end)
+    return btn, function() return active end
+end
+
+-- ─── Helper: radio group ───────────────────────
+local function NRadioGroup(parent, options, defaultIdx, x, startY, gap, callback)
+    local selected = defaultIdx or 1
+    local dots = {}
+    for i, opt in ipairs(options) do
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(0, 120, 0, 22)
+        row.Position = UDim2.new(0, x, 0, startY + (i-1)*gap)
+        row.BackgroundTransparency = 1
+        row.ZIndex = parent.ZIndex + 1
+        row.Parent = parent
+
+        local dot = Instance.new("Frame")
+        dot.Size = UDim2.new(0, 14, 0, 14)
+        dot.Position = UDim2.new(0, 0, 0.5, -7)
+        dot.BackgroundColor3 = i == selected and C.Accent or C.TextDim
+        dot.BorderSizePixel = 0
+        dot.ZIndex = row.ZIndex + 1
+        dot.Parent = row
+        Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+
+        local inner = Instance.new("Frame")
+        inner.Size = UDim2.new(0, 6, 0, 6)
+        inner.Position = UDim2.new(0.5, -3, 0.5, -3)
+        inner.BackgroundColor3 = C.Base
+        inner.BorderSizePixel = 0
+        inner.Visible = i == selected
+        inner.ZIndex = dot.ZIndex + 1
+        inner.Parent = dot
+        Instance.new("UICorner", inner).CornerRadius = UDim.new(1, 0)
+
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(1, -20, 1, 0)
+        lbl.Position = UDim2.new(0, 20, 0, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = opt
+        lbl.TextColor3 = C.TextPri
+        lbl.TextSize = 11
+        lbl.Font = Enum.Font.Gotham
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.ZIndex = row.ZIndex + 1
+        lbl.Parent = row
+
+        table.insert(dots, {dot=dot, inner=inner})
+
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, 0, 1, 0)
+        btn.BackgroundTransparency = 1
+        btn.Text = ""
+        btn.ZIndex = row.ZIndex + 2
+        btn.Parent = row
+        btn.MouseButton1Click:Connect(function()
+            selected = i
+            for j, d in ipairs(dots) do
+                local sel = j == i
+                Tween(d.dot, {BackgroundColor3 = sel and C.Accent or C.TextDim}, 0.15)
+                d.inner.Visible = sel
+            end
+            if callback then callback(i, opt) end
+        end)
+    end
+end
+
+-- ════════════════════════════════════════════════
+--  PAGE: CLICKER
+-- ════════════════════════════════════════════════
+local PageCLICKER = MakePage("CLICKER")
+
+-- Big START/STOP button
+local BigBtn = Instance.new("TextButton")
+BigBtn.Size = UDim2.new(0, 160, 0, 160)
+BigBtn.Position = UDim2.new(0.5, -80, 0, 10)
+BigBtn.BackgroundColor3 = C.Raised
+BigBtn.BorderSizePixel = 0
+BigBtn.Text = ""
+BigBtn.ZIndex = PageCLICKER.ZIndex + 2
+BigBtn.Parent = PageCLICKER
+Instance.new("UICorner", BigBtn).CornerRadius = UDim.new(1, 0)
+
+local BigBtnGlow = Instance.new("Frame")
+BigBtnGlow.Size = UDim2.new(1, 20, 1, 20)
+BigBtnGlow.Position = UDim2.new(0, -10, 0, -10)
+BigBtnGlow.BackgroundColor3 = C.Accent
+BigBtnGlow.BorderSizePixel = 0
+BigBtnGlow.BackgroundTransparency = 0.85
+BigBtnGlow.ZIndex = BigBtn.ZIndex - 1
+BigBtnGlow.Parent = BigBtn
+Instance.new("UICorner", BigBtnGlow).CornerRadius = UDim.new(1, 0)
+
+local BigBtnIcon = Instance.new("TextLabel")
+BigBtnIcon.Size = UDim2.new(1, 0, 0, 70)
+BigBtnIcon.Position = UDim2.new(0, 0, 0.5, -50)
+BigBtnIcon.BackgroundTransparency = 1
+BigBtnIcon.Text = "▶"
+BigBtnIcon.TextColor3 = C.Accent
+BigBtnIcon.TextSize = 46
+BigBtnIcon.Font = Enum.Font.GothamBold
+BigBtnIcon.ZIndex = BigBtn.ZIndex + 1
+BigBtnIcon.Parent = BigBtn
+
+local BigBtnLabel = Instance.new("TextLabel")
+BigBtnLabel.Size = UDim2.new(1, 0, 0, 24)
+BigBtnLabel.Position = UDim2.new(0, 0, 0.5, 20)
+BigBtnLabel.BackgroundTransparency = 1
+BigBtnLabel.Text = "START"
+BigBtnLabel.TextColor3 = C.Accent
+BigBtnLabel.TextSize = 14
+BigBtnLabel.Font = Enum.Font.GothamBold
+BigBtnLabel.ZIndex = BigBtn.ZIndex + 1
+BigBtnLabel.Parent = BigBtn
+
+local BigBtnSub = Instance.new("TextLabel")
+BigBtnSub.Size = UDim2.new(1, 0, 0, 16)
+BigBtnSub.Position = UDim2.new(0, 0, 0.5, 42)
+BigBtnSub.BackgroundTransparency = 1
+BigBtnSub.Text = "[ F6 ]"
+BigBtnSub.TextColor3 = C.TextSec
+BigBtnSub.TextSize = 10
+BigBtnSub.Font = Enum.Font.Gotham
+BigBtnSub.ZIndex = BigBtn.ZIndex + 1
+BigBtnSub.Parent = BigBtn
+
+-- Stats strip
+local StatCard = NCard(PageCLICKER, 10, 180, 395, 50, "")
+local StatCPS = Instance.new("TextLabel")
+StatCPS.Size = UDim2.new(0.33, 0, 1, 0)
+StatCPS.BackgroundTransparency = 1
+StatCPS.Text = "0\nCPS"
+StatCPS.TextColor3 = C.TextPri
+StatCPS.TextSize = 12
+StatCPS.Font = Enum.Font.GothamBold
+StatCPS.ZIndex = StatCard.ZIndex + 1
+StatCPS.Parent = StatCard
+
+local StatTotal = Instance.new("TextLabel")
+StatTotal.Size = UDim2.new(0.33, 0, 1, 0)
+StatTotal.Position = UDim2.new(0.33, 0, 0, 0)
+StatTotal.BackgroundTransparency = 1
+StatTotal.Text = "0\nTOTAL"
+StatTotal.TextColor3 = C.TextPri
+StatTotal.TextSize = 12
+StatTotal.Font = Enum.Font.GothamBold
+StatTotal.ZIndex = StatCard.ZIndex + 1
+StatTotal.Parent = StatCard
+
+local StatTime = Instance.new("TextLabel")
+StatTime.Size = UDim2.new(0.34, 0, 1, 0)
+StatTime.Position = UDim2.new(0.66, 0, 0, 0)
+StatTime.BackgroundTransparency = 1
+StatTime.Text = "0s\nSESSION"
+StatTime.TextColor3 = C.TextPri
+StatTime.TextSize = 12
+StatTime.Font = Enum.Font.GothamBold
+StatTime.ZIndex = StatCard.ZIndex + 1
+StatTime.Parent = StatCard
+
+-- Interval Card
+local IntervalCard = NCard(PageCLICKER, 10, 240, 395, 90, "⏱  CLICK INTERVAL")
+
+local function IntervalRow(lbl, x, y, defaultVal)
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0, 30, 0, 22)
+    label.Position = UDim2.new(0, x, 0, y)
+    label.BackgroundTransparency = 1
+    label.Text = lbl
+    label.TextColor3 = C.TextSec
+    label.TextSize = 10
+    label.Font = Enum.Font.GothamBold
+    label.ZIndex = IntervalCard.ZIndex + 1
+    label.Parent = IntervalCard
+    local inp = NInput(IntervalCard, x+32, y, 52, 22, defaultVal, true)
+    return inp
+end
+
+local InpHr  = IntervalRow("HR",   8,  36, 0)
+local InpMin = IntervalRow("MIN", 104, 36, 0)
+local InpSec = IntervalRow("SEC", 200, 36, 0)
+local InpMs  = IntervalRow("MS",  296, 36, 20)
+
+-- ── Click Options Card ─────────────────────────
+local ClickOptCard = NCard(PageCLICKER, 10, 340, 395, 100, "🖱  CLICK OPTIONS")
+
+local TombolLabel = Instance.new("TextLabel")
+TombolLabel.Size = UDim2.new(0, 60, 0, 20)
+TombolLabel.Position = UDim2.new(0, 12, 0, 28)
+TombolLabel.BackgroundTransparency = 1
+TombolLabel.Text = "BUTTON:"
+TombolLabel.TextColor3 = C.TextSec
+TombolLabel.TextSize = 10
+TombolLabel.Font = Enum.Font.GothamBold
+TombolLabel.ZIndex = ClickOptCard.ZIndex + 1
+TombolLabel.Parent = ClickOptCard
+
+NRadioGroup(ClickOptCard, {"LEFT","RIGHT","MIDDLE"}, 1, 80, 28, 0, function(i, opt)
+    State.clickButton = opt
+end)
+-- reposition those radios horizontally
+-- (we do inline layout with a spacing trick below)
+local clickBtnX = {80, 150, 230}
+for i, opt in ipairs({"LEFT","RIGHT","MIDDLE"}) do
+    -- already created by NRadioGroup, just note positions
+end
+
+local JenisLabel = Instance.new("TextLabel")
+JenisLabel.Size = UDim2.new(0, 60, 0, 20)
+JenisLabel.Position = UDim2.new(0, 12, 0, 60)
+JenisLabel.BackgroundTransparency = 1
+JenisLabel.Text = "TYPE:"
+JenisLabel.TextColor3 = C.TextSec
+JenisLabel.TextSize = 10
+JenisLabel.Font = Enum.Font.GothamBold
+JenisLabel.ZIndex = ClickOptCard.ZIndex + 1
+JenisLabel.Parent = ClickOptCard
+
+NRadioGroup(ClickOptCard, {"SINGLE","DOUBLE","TRIPLE"}, 1, 80, 60, 0, function(i, opt)
+    State.clickType = opt
+end)
+
+-- Repeat Card
+local RepeatCard = NCard(PageCLICKER, 10, 450, 395, 70, "🔁  REPEAT MODE")
+
+NRadioGroup(RepeatCard, {"INFINITE"}, 1, 12, 30, 0, function(i)
+    State.repeatMode = "Infinite"
+end)
+
+local CountLabel = Instance.new("TextLabel")
+CountLabel.Size = UDim2.new(0, 60, 0, 20)
+CountLabel.Position = UDim2.new(0, 140, 0, 32)
+CountLabel.BackgroundTransparency = 1
+CountLabel.Text = "COUNT:"
+CountLabel.TextColor3 = C.TextSec
+CountLabel.TextSize = 10
+CountLabel.Font = Enum.Font.GothamBold
+CountLabel.ZIndex = RepeatCard.ZIndex + 1
+CountLabel.Parent = RepeatCard
+
+local InpCount = NInput(RepeatCard, 200, 30, 60, 24, 10, true)
+
+NRadioGroup(RepeatCard, {"#"}, 1, 12, 32, 0, function(i)
+    State.repeatMode = "Count"
+    State.repeatCount = tonumber(InpCount.Text) or 10
+end)
+
+-- ════════════════════════════════════════════════
+--  PAGE: POSITION
+-- ════════════════════════════════════════════════
+local PagePOSITION = MakePage("POSITION")
+
+local PosCard = NCard(PagePOSITION, 10, 10, 395, 120, "📍  CURSOR POSITION")
+
+NRadioGroup(PosCard, {"DYNAMIC (Current Position)"}, 1, 12, 32, 30, function()
+    State.posMode = "Dynamic"
+end)
+
+NRadioGroup(PosCard, {"FIXED COORDINATES"}, 1, 12, 64, 30, function()
+    State.posMode = "Fixed"
+end)
+
+local XLabel = Instance.new("TextLabel")
+XLabel.Size = UDim2.new(0, 20, 0, 22)
+XLabel.Position = UDim2.new(0, 175, 0, 62)
+XLabel.BackgroundTransparency = 1
+XLabel.Text = "X:"
+XLabel.TextColor3 = C.TextSec
+XLabel.TextSize = 11
+XLabel.Font = Enum.Font.GothamBold
+XLabel.ZIndex = PosCard.ZIndex + 1
+XLabel.Parent = PosCard
+
+local InpX = NInput(PosCard, 196, 62, 60, 24, 0, true)
+
+local YLabel = Instance.new("TextLabel")
+YLabel.Size = UDim2.new(0, 20, 0, 22)
+YLabel.Position = UDim2.new(0, 270, 0, 62)
+YLabel.BackgroundTransparency = 1
+YLabel.Text = "Y:"
+YLabel.TextColor3 = C.TextSec
+YLabel.TextSize = 11
+YLabel.Font = Enum.Font.GothamBold
+YLabel.ZIndex = PosCard.ZIndex + 1
+YLabel.Parent = PosCard
+
+local InpY = NInput(PosCard, 290, 62, 60, 24, 0, true)
+
+local GetPosBtn = Instance.new("TextButton")
+GetPosBtn.Size = UDim2.new(0, 80, 0, 28)
+GetPosBtn.Position = UDim2.new(0, 300, 0, 60)
+GetPosBtn.BackgroundColor3 = C.AccentDim
+GetPosBtn.BorderSizePixel = 0
+GetPosBtn.Text = "[GRAB]"
+GetPosBtn.TextColor3 = C.TextPri
+GetPosBtn.TextSize = 11
+GetPosBtn.Font = Enum.Font.GothamBold
+GetPosBtn.ZIndex = PosCard.ZIndex + 2
+GetPosBtn.Parent = PosCard
+Instance.new("UICorner", GetPosBtn).CornerRadius = UDim.new(0, 8)
+
+GetPosBtn.MouseButton1Click:Connect(function()
+    local mouse = LocalPlayer:GetMouse()
+    InpX.Text = tostring(mouse.X)
+    InpY.Text = tostring(mouse.Y)
+    State.fixedX = mouse.X
+    State.fixedY = mouse.Y
+end)
+
+-- Click visualizer
+local ClickVisCard = NCard(PagePOSITION, 10, 140, 395, 220, "🖥  CLICK ZONE PREVIEW")
+local VisFrame = Instance.new("Frame")
+VisFrame.Size = UDim2.new(1, -24, 1, -36)
+VisFrame.Position = UDim2.new(0, 12, 0, 28)
+VisFrame.BackgroundColor3 = C.Pressed
+VisFrame.BorderSizePixel = 0
+VisFrame.ZIndex = ClickVisCard.ZIndex + 1
+VisFrame.Parent = ClickVisCard
+Instance.new("UICorner", VisFrame).CornerRadius = UDim.new(0, 8)
+
+local VisCursor = Instance.new("Frame")
+VisCursor.Size = UDim2.new(0, 14, 0, 14)
+VisCursor.Position = UDim2.new(0.5, -7, 0.5, -7)
+VisCursor.BackgroundColor3 = C.Accent
+VisCursor.BorderSizePixel = 0
+VisCursor.ZIndex = VisFrame.ZIndex + 1
+VisCursor.Parent = VisFrame
+Instance.new("UICorner", VisCursor).CornerRadius = UDim.new(1, 0)
+
+local VisPosLabel = Instance.new("TextLabel")
+VisPosLabel.Size = UDim2.new(1, 0, 0, 18)
+VisPosLabel.Position = UDim2.new(0, 0, 1, -20)
+VisPosLabel.BackgroundTransparency = 1
+VisPosLabel.Text = "X: 0  Y: 0"
+VisPosLabel.TextColor3 = C.TextSec
+VisPosLabel.TextSize = 10
+VisPosLabel.Font = Enum.Font.Gotham
+VisPosLabel.ZIndex = VisFrame.ZIndex + 1
+VisPosLabel.Parent = VisFrame
+
+-- ════════════════════════════════════════════════
+--  PAGE: HOTKEY
+-- ════════════════════════════════════════════════
+local PageHOTKEY = MakePage("HOTKEY")
+
+local function HotkeyCard(parent, y, label, currentKey, onSet)
+    local card = NCard(parent, 10, y, 395, 70, label)
+    local disp = Instance.new("TextLabel")
+    disp.Size = UDim2.new(0, 120, 0, 30)
+    disp.Position = UDim2.new(0, 12, 0, 28)
+    disp.BackgroundColor3 = C.Pressed
+    disp.BorderSizePixel = 0
+    disp.Text = "[ "..currentKey.." ]"
+    disp.TextColor3 = C.AccentGlow
+    disp.TextSize = 13
+    disp.Font = Enum.Font.GothamBold
+    disp.ZIndex = card.ZIndex + 1
+    disp.Parent = card
+    Instance.new("UICorner", disp).CornerRadius = UDim.new(0, 8)
+
+    local setBtn = Instance.new("TextButton")
+    setBtn.Size = UDim2.new(0, 80, 0, 30)
+    setBtn.Position = UDim2.new(0, 145, 0, 28)
+    setBtn.BackgroundColor3 = C.AccentDim
+    setBtn.BorderSizePixel = 0
+    setBtn.Text = "[CHANGE]"
+    setBtn.TextColor3 = C.TextPri
+    setBtn.TextSize = 11
+    setBtn.Font = Enum.Font.GothamBold
+    setBtn.ZIndex = card.ZIndex + 1
+    setBtn.Parent = card
+    Instance.new("UICorner", setBtn).CornerRadius = UDim.new(0, 8)
+
+    local listening = false
+    setBtn.MouseButton1Click:Connect(function()
+        if listening then return end
+        listening = true
+        disp.Text = "[ PRESS KEY... ]"
+        disp.TextColor3 = C.Warn
+        local conn
+        conn = UserInputService.InputBegan:Connect(function(inp)
+            if inp.UserInputType == Enum.UserInputType.Keyboard then
+                conn:Disconnect()
+                listening = false
+                local keyName = inp.KeyCode.Name
+                disp.Text = "[ "..keyName.." ]"
+                disp.TextColor3 = C.AccentGlow
+                if onSet then onSet(inp.KeyCode, keyName) end
+            end
+        end)
+    end)
+    return disp
+end
+
+HotkeyCard(PageHOTKEY, 10, "⌨  TOGGLE CLICKER", "F6", function(key, name)
+    State.toggleKey = key
+    BigBtnSub.Text = "[ "..name.." ]"
+end)
+HotkeyCard(PageHOTKEY, 90, "⏺  RECORD START/STOP", "F7", function(key)
+    State.recordKey = key
+end)
+
+-- ════════════════════════════════════════════════
+--  PAGE: RECORD
+-- ════════════════════════════════════════════════
+local PageRECORD = MakePage("RECORD")
+
+local RecCard = NCard(PageRECORD, 10, 10, 395, 160, "⏺  MACRO RECORDER")
+
+local RecStatus = Instance.new("TextLabel")
+RecStatus.Size = UDim2.new(1, -24, 0, 24)
+RecStatus.Position = UDim2.new(0, 12, 0, 32)
+RecStatus.BackgroundColor3 = C.Pressed
+RecStatus.BorderSizePixel = 0
+RecStatus.Text = "● READY"
+RecStatus.TextColor3 = C.TextSec
+RecStatus.TextSize = 12
+RecStatus.Font = Enum.Font.GothamBold
+RecStatus.ZIndex = RecCard.ZIndex + 1
+RecStatus.Parent = RecCard
+Instance.new("UICorner", RecStatus).CornerRadius = UDim.new(0, 6)
+
+local function RecBtn(lbl, x, color, cb)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0, 80, 0, 34)
+    b.Position = UDim2.new(0, x, 0, 68)
+    b.BackgroundColor3 = color
+    b.BorderSizePixel = 0
+    b.Text = lbl
+    b.TextColor3 = C.Base
+    b.TextSize = 11
+    b.Font = Enum.Font.GothamBold
+    b.ZIndex = RecCard.ZIndex + 1
+    b.Parent = RecCard
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
+    b.MouseButton1Click:Connect(cb or function() end)
+    return b
+end
+
+RecBtn("[REC]",  12,  C.Danger, function()
+    State.recordedClicks = {}
+    State.recording = true
+    RecStatus.Text = "● RECORDING..."
+    RecStatus.TextColor3 = C.Danger
+end)
+
+RecBtn("[STOP]", 102, C.Warn, function()
+    State.recording = false
+    State.playing   = false
+    RecStatus.Text = "● STOPPED — "..#State.recordedClicks.." events"
+    RecStatus.TextColor3 = C.Warn
+end)
+
+RecBtn("[PLAY]", 192, C.Green, function()
+    if #State.recordedClicks == 0 then return end
+    State.playing = true
+    State.playIndex = 1
+    RecStatus.Text = "▶ PLAYING..."
+    RecStatus.TextColor3 = C.Green
+end)
+
+RecBtn("[CLEAR]",282, C.TextDim, function()
+    State.recordedClicks = {}
+    State.recording = false
+    State.playing   = false
+    RecStatus.Text = "● CLEARED"
+    RecStatus.TextColor3 = C.TextSec
+end)
+
+local RecCount = Instance.new("TextLabel")
+RecCount.Size = UDim2.new(1, -24, 0, 24)
+RecCount.Position = UDim2.new(0, 12, 0, 114)
+RecCount.BackgroundTransparency = 1
+RecCount.Text = "Recorded: 0 events"
+RecCount.TextColor3 = C.TextDim
+RecCount.TextSize = 11
+RecCount.Font = Enum.Font.Gotham
+RecCount.ZIndex = RecCard.ZIndex + 1
+RecCount.Parent = RecCard
+
+-- ════════════════════════════════════════════════
+--  PAGE: EXTRAS
+-- ════════════════════════════════════════════════
+local PageEXTRAS = MakePage("EXTRAS")
+
+local AntiAfkCard = NCard(PageEXTRAS, 10, 10, 395, 70, "🕒  ANTI-AFK")
+local antiAfkBtn, getAntiAfk = NToggle(AntiAfkCard, 12, 28, 140, 30, "DISABLED","ENABLED", function(on)
+    State.antiAfkActive = on
+end)
+local antiAfkInfo = Instance.new("TextLabel")
+antiAfkInfo.Size = UDim2.new(0, 220, 0, 30)
+antiAfkInfo.Position = UDim2.new(0, 162, 0, 28)
+antiAfkInfo.BackgroundTransparency = 1
+antiAfkInfo.Text = "Auto-jumps every 60s\nto prevent kick"
+antiAfkInfo.TextColor3 = C.TextSec
+antiAfkInfo.TextSize = 10
+antiAfkInfo.Font = Enum.Font.Gotham
+antiAfkInfo.ZIndex = AntiAfkCard.ZIndex + 1
+antiAfkInfo.Parent = AntiAfkCard
+
+local SpeedCard = NCard(PageEXTRAS, 10, 90, 395, 90, "⚡  WALKSPEED BOOST")
+local speedBtn, getSpeed = NToggle(SpeedCard, 12, 28, 140, 30, "DISABLED","ENABLED", function(on)
+    State.speedBoostActive = on
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChild("Humanoid")
+        if hum then hum.WalkSpeed = on and (tonumber(InpSpeed.Text) or 32) or 16 end
+    end
+end)
+local SpeedLbl = Instance.new("TextLabel")
+SpeedLbl.Size = UDim2.new(0, 60, 0, 22)
+SpeedLbl.Position = UDim2.new(0, 162, 0, 30)
+SpeedLbl.BackgroundTransparency = 1
+SpeedLbl.Text = "SPEED:"
+SpeedLbl.TextColor3 = C.TextSec
+SpeedLbl.TextSize = 10
+SpeedLbl.Font = Enum.Font.GothamBold
+SpeedLbl.ZIndex = SpeedCard.ZIndex + 1
+SpeedLbl.Parent = SpeedCard
+local InpSpeed = NInput(SpeedCard, 218, 28, 60, 26, 32, true)
+
+local JumpCard = NCard(PageEXTRAS, 10, 190, 395, 90, "🦘  JUMPPOWER BOOST")
+local jumpBtn, getJump = NToggle(JumpCard, 12, 28, 140, 30, "DISABLED","ENABLED", function(on)
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChild("Humanoid")
+        if hum then hum.JumpPower = on and (tonumber(InpJump.Text) or 100) or 50 end
+    end
+end)
+local JumpLbl = Instance.new("TextLabel")
+JumpLbl.Size = UDim2.new(0, 60, 0, 22)
+JumpLbl.Position = UDim2.new(0, 162, 0, 30)
+JumpLbl.BackgroundTransparency = 1
+JumpLbl.Text = "POWER:"
+JumpLbl.TextColor3 = C.TextSec
+JumpLbl.TextSize = 10
+JumpLbl.Font = Enum.Font.GothamBold
+JumpLbl.ZIndex = JumpCard.ZIndex + 1
+JumpLbl.Parent = JumpCard
+local InpJump = NInput(JumpCard, 218, 28, 60, 26, 100, true)
+
+local NoclipCard = NCard(PageEXTRAS, 10, 290, 395, 70, "👻  NO-CLIP")
+local noclipBtn, getNoclip = NToggle(NoclipCard, 12, 28, 140, 30, "DISABLED","ENABLED", function(on)
+    State.noclip = on
+end)
+local noclipInfo = Instance.new("TextLabel")
+noclipInfo.Size = UDim2.new(0, 220, 0, 30)
+noclipInfo.Position = UDim2.new(0, 162, 0, 28)
+noclipInfo.BackgroundTransparency = 1
+noclipInfo.Text = "Pass through walls.\nUse with caution!"
+noclipInfo.TextColor3 = C.Warn
+noclipInfo.TextSize = 10
+noclipInfo.Font = Enum.Font.Gotham
+noclipInfo.ZIndex = NoclipCard.ZIndex + 1
+noclipInfo.Parent = NoclipCard
+
+local InfJumpCard = NCard(PageEXTRAS, 10, 370, 395, 70, "∞  INFINITE JUMP")
+local infJumpBtn, getInfJump = NToggle(InfJumpCard, 12, 28, 140, 30, "DISABLED","ENABLED", function(on)
+    State.infJump = on
+end)
+local infJumpInfo = Instance.new("TextLabel")
+infJumpInfo.Size = UDim2.new(0, 220, 0, 30)
+infJumpInfo.Position = UDim2.new(0, 162, 0, 28)
+infJumpInfo.BackgroundTransparency = 1
+infJumpInfo.Text = "Jump without limit.\nHold Space."
+infJumpInfo.TextColor3 = C.TextSec
+infJumpInfo.TextSize = 10
+infJumpInfo.Font = Enum.Font.Gotham
+infJumpInfo.ZIndex = InfJumpCard.ZIndex + 1
+infJumpInfo.Parent = InfJumpCard
+
+-- ════════════════════════════════════════════════
+--  SELECT DEFAULT TAB
+-- ════════════════════════════════════════════════
+SelectTab("CLICKER")
+
+-- ════════════════════════════════════════════════
+--  CLICK LOGIC
+-- ════════════════════════════════════════════════
+local function PerformClick()
+    local mouse = LocalPlayer:GetMouse()
+    local x = State.posMode == "Fixed" and State.fixedX or mouse.X
+    local y = State.posMode == "Fixed" and State.fixedY or mouse.Y
+
+    local times = State.clickType == "Single" and 1
+               or State.clickType == "Double" and 2
+               or 3
+
+    for _ = 1, times do
+        if State.clickButton == "Left" then
+            mouse1click()
+        elseif State.clickButton == "Right" then
+            mouse2click()
+        else
+            mouse3click()
+        end
+        if times > 1 then task.wait(0.01) end
+    end
+
+    State.totalClicks = State.totalClicks + times
+    State.clicksDone  = State.clicksDone  + 1
+
+    -- Recording
+    if State.recording then
+        table.insert(State.recordedClicks, {x=x, y=y, btn=State.clickButton, t=tick()})
+        RecCount.Text = "Recorded: "..#State.recordedClicks.." events"
+    end
+end
+
+-- ════════════════════════════════════════════════
+--  TOGGLE CLICK
+-- ════════════════════════════════════════════════
+local function ToggleClicker()
+    State.clickActive = not State.clickActive
+    State.clicksDone  = 0
+
+    if State.clickActive then
+        Tween(BigBtn,      {BackgroundColor3 = C.Accent},    0.2)
+        Tween(BigBtnGlow,  {BackgroundTransparency = 0.6},   0.2)
+        BigBtnIcon.TextColor3 = C.Base
+        BigBtnLabel.TextColor3 = C.Base
+        BigBtnIcon.Text  = "⏹"
+        BigBtnLabel.Text = "STOP"
+        StatusDot.BackgroundColor3   = C.Green
+        StatusLabel.Text             = "ACTIVE"
+        StatusLabel.TextColor3       = C.Green
+    else
+        Tween(BigBtn,      {BackgroundColor3 = C.Raised},    0.2)
+        Tween(BigBtnGlow,  {BackgroundTransparency = 0.85},  0.2)
+        BigBtnIcon.TextColor3 = C.Accent
+        BigBtnLabel.TextColor3 = C.Accent
+        BigBtnIcon.Text  = "▶"
+        BigBtnLabel.Text = "START"
+        StatusDot.BackgroundColor3   = C.Red
+        StatusLabel.Text             = "INACTIVE"
+        StatusLabel.TextColor3       = C.Red
+    end
+end
+
+BigBtn.MouseButton1Click:Connect(ToggleClicker)
+
+-- ════════════════════════════════════════════════
+--  MAIN LOOP
+-- ════════════════════════════════════════════════
+local lastClick   = 0
+local lastAfk     = tick()
+local lastCpsSample = tick()
+local cpsCount    = 0
+
+local loopConn = RunService.Heartbeat:Connect(function(dt)
+    local now = tick()
+
+    -- Read interval
+    local hr  = tonumber(InpHr.Text)  or 0
+    local mn  = tonumber(InpMin.Text) or 0
+    local sec = tonumber(InpSec.Text) or 0
+    local ms  = tonumber(InpMs.Text)  or 20
+    State.clickInterval = hr*3600 + mn*60 + sec + ms/1000
+    if State.clickInterval < 0.001 then State.clickInterval = 0.001 end
+
+    -- Clicker
+    if State.clickActive and (now - lastClick) >= State.clickInterval then
+        if State.repeatMode == "Count" then
+            State.repeatCount = tonumber(InpCount.Text) or 10
+            if State.clicksDone >= State.repeatCount then
+                ToggleClicker()
+                return
+            end
+        end
+        PerformClick()
+        lastClick = now
+        cpsCount = cpsCount + 1
+    end
+
+    -- Macro playback
+    if State.playing and #State.recordedClicks > 0 then
+        local ev = State.recordedClicks[State.playIndex]
+        if ev and (now - lastClick) >= State.clickInterval then
+            if State.clickButton == "Left" then mouse1click()
+            elseif State.clickButton == "Right" then mouse2click()
+            else mouse3click() end
+            State.playIndex = State.playIndex + 1
+            if State.playIndex > #State.recordedClicks then
+                State.playing = false
+                RecStatus.Text = "✔ PLAYBACK DONE"
+                RecStatus.TextColor3 = C.Green
+            end
+            lastClick = now
+        end
+    end
+
+    -- CPS calculation (per second)
+    if (now - lastCpsSample) >= 1 then
+        StatCPS.Text   = cpsCount.."\nCPS"
+        cpsCount       = 0
+        lastCpsSample  = now
+        StatTotal.Text = State.totalClicks.."\nTOTAL"
+        StatTime.Text  = (os.time()-State.sessionStart).."s\nSESSION"
+    end
+
+    -- Anti-AFK
+    if State.antiAfkActive and (now - lastAfk) >= 60 then
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChild("Humanoid")
+            if hum then hum.Jump = true end
+        end
+        lastAfk = now
+    end
+
+    -- Noclip
+    if State.noclip then
+        local char = LocalPlayer.Character
+        if char then
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+        end
+    end
+
+    -- Cursor viz
+    local m = LocalPlayer:GetMouse()
+    VisPosLabel.Text = "X: "..m.X.."  Y: "..m.Y
+    local vw = VisFrame.AbsoluteSize.X
+    local vh = VisFrame.AbsoluteSize.Y
+    local sx = game.Workspace.CurrentCamera.ViewportSize.X
+    local sy = game.Workspace.CurrentCamera.ViewportSize.Y
+    if sx > 0 and sy > 0 then
+        VisCursor.Position = UDim2.new(m.X/sx, -7, m.Y/sy, -7)
+    end
+end)
+
+-- ════════════════════════════════════════════════
+--  HOTKEY LISTENER
+-- ════════════════════════════════════════════════
+UserInputService.InputBegan:Connect(function(inp, gp)
+    if gp then return end
+    if inp.UserInputType == Enum.UserInputType.Keyboard then
+        if inp.KeyCode == State.toggleKey then
+            ToggleClicker()
+        elseif inp.KeyCode == State.recordKey then
+            State.recording = not State.recording
+            if State.recording then
+                State.recordedClicks = {}
+                RecStatus.Text = "● RECORDING..."
+                RecStatus.TextColor3 = C.Danger
+            else
+                RecStatus.Text = "■ STOPPED — "..#State.recordedClicks.." events"
+                RecStatus.TextColor3 = C.Warn
+            end
+        end
+    end
+end)
+
+-- Infinite Jump
+UserInputService.JumpRequest:Connect(function()
+    if State.infJump then
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChild("Humanoid")
+            if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+        end
+    end
+end)
+
+-- Entrance animation
+Main.Size = UDim2.new(0, 420, 0, 0)
+Tween(Main, {Size = UDim2.new(0, 420, 0, 560)}, 0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+
+-- ════════════════════════════════════════════════
+--  DONE — jpXcode Auto Clicker v3.0
+-- ════════════════════════════════════════════════
+print("✅ jpXcode AUTO CLICKER v3.0 loaded successfully!")
+print("   Toggle: "..State.toggleKey.Name.."  |  Record: "..State.recordKey.Name)
