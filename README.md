@@ -27,3 +27,6 @@ Designed to feel professional, clean, and user-friendly while keeping the classi
 loadstring(game:HttpGet("https://raw.githubusercontent.com/jpXproject/AdvancedAutoclicker-neumorphic/refs/heads/main/jpXCAutoClickerV1.lua"))()
 ```
 
+```
+loadstring(game:HttpGet("https://raw.githubusercontent.com/jpXproject/AdvancedAutoclicker-neumorphic/refs/heads/main/V2"))()
+```
